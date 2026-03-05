@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Alkira Tenant Dashboard - All Tenants{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>All Tenants</h1>
+    <p class="subtitle">{{ active_count }} active of {{ tenant_count }} total tenants</p>
+</div>
+
+<div class="controls">
+    <input type="text" id="search" class="search-input" placeholder="Search tenants..." autocomplete="off">
+    <label class="checkbox-label">
+        <input type="checkbox" id="hide-empty" checked> Hide empty tenants
+    </label>
+</div>
+
+<div class="table-wrapper">
+    <table class="data-table sortable" id="tenants-table">
+        <thead>
+            <tr>
+                <th data-sort="string">Tenant</th>
+                <th data-sort="number">CXPs</th>
+                <th data-sort="number">Total BW RX</th>
+                <th data-sort="number">Total BW TX</th>
+                <th data-sort="number">Data Egress (30d)</th>
+                <th data-sort="number">Cloud</th>
+                <th data-sort="number">On-Prem</th>
+                <th data-sort="number">Services</th>
+                <th data-sort="number">BW Violators</th>
+                <th data-sort="number">Top Utilization</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for t in tenants %}
+            <tr class="{% if t.is_empty %}row-empty{% endif %}" data-tenant="{{ t.prefix }}">
+                <td><a href="/tenant/{{ t.prefix | replace('/', '_') | replace(' ', '_') }}.html">{{ t.prefix | clean_tenant_name }}</a></td>
+                <td data-value="{{ t.cxp_count }}">
+                    {% for cloud, count in t.cloud_cxp_counts.items() | sort %}
+                    <span class="badge {{ cloud_badge_class(cloud) }}">{{ count }} {{ cloud }}</span>
+                    {% endfor %}
+                </td>
+                <td data-value="{{ t.total_rx }}">{{ t.total_rx_fmt }}</td>
+                <td data-value="{{ t.total_tx }}">{{ t.total_tx_fmt }}</td>
+                <td data-value="{{ t.total_egress }}">{{ t.total_egress_fmt }}</td>
+                <td data-value="{{ t.cloud_connectors }}">{{ t.cloud_connectors }}</td>
+                <td data-value="{{ t.onprem_connectors }}">{{ t.onprem_connectors }}</td>
+                <td data-value="{{ t.service_count }}">{{ t.service_count if t.service_count else '—' }}</td>
+                <td data-value="{{ t.violator_count }}" class="{{ 'util-high' if t.violator_count else '' }}">
+                    {{ t.violator_count if t.violator_count else '—' }}
+                </td>
+                <td data-value="{{ t.top_util }}" class="{{ t.top_util_class }}">{{ t.top_util_fmt }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="totals-row">
+                <td><strong>Totals ({{ tenant_count }} tenants)</strong></td>
+                <td><strong>{{ totals.cxp_count }}</strong></td>
+                <td></td><td></td><td></td>
+                <td><strong>{{ totals.cloud_connectors }}</strong></td>
+                <td><strong>{{ totals.onprem_connectors }}</strong></td>
+                <td><strong>{{ totals.service_count }}</strong></td>
+                <td>{% if totals.violator_count %}<strong class="util-high">{{ totals.violator_count }}</strong>{% else %}—{% endif %}</td>
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/dashboard.js"></script>
+<script>
+    initIndexPage();
+</script>
+{% endblock %}

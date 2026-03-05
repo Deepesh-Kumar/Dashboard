@@ -1,0 +1,2 @@
+# Run dashboard metrics collection every Sunday at 2:00 AM UTC
+0 2 * * 0 root /opt/dashboard/run.sh >> /var/log/dashboard-metrics.log 2>&1

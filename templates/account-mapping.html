@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Account Mapping - Alkira Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <a href="/home.html" class="back-link">&larr; Dashboard Portal</a>
+    <h1>Account Mapping</h1>
+    <p class="subtitle">{{ accounts|length }} customers &mdash; Account owners, SAs, and SEs by region &mdash; As of {{ source_date }}</p>
+</div>
+
+<div class="controls">
+    <input type="text" id="acct-search" class="search-input" placeholder="Search accounts, owners, SA, SE..." autocomplete="off">
+    <div id="div-filters" class="div-filter-group">
+        <button class="div-filter-btn active" data-div="">All</button>
+        {% for div in divisions %}
+        <button class="div-filter-btn" data-div="{{ div }}">{{ div }}</button>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="table-wrapper">
+    <table class="data-table sortable" id="acct-table">
+        <thead>
+            <tr>
+                <th data-sort="string">Region</th>
+                <th data-sort="string">Account Name</th>
+                <th data-sort="string">Account Owner</th>
+                <th data-sort="string">SA</th>
+                <th data-sort="string">SE</th>
+                <th data-sort="string">Country</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for a in accounts %}
+            <tr data-div="{{ a.division }}">
+                <td><span class="badge {{ a.division | division_badge_class }}">{{ a.division | division_short }}</span></td>
+                <td>{{ a.account_name }}</td>
+                <td>{{ a.account_owner if a.account_owner else '—' }}</td>
+                <td>{{ a.sa if a.sa else '—' }}</td>
+                <td>{{ a.se if a.se else '—' }}</td>
+                <td>{{ a.country if a.country else '—' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/dashboard.js"></script>
+<script>
+(function() {
+    const search = document.getElementById('acct-search');
+    const filterBtns = document.querySelectorAll('.div-filter-btn');
+    const rows = Array.from(document.querySelectorAll('#acct-table tbody tr'));
+    let activeDivision = '';
+
+    function applyFilters() {
+        const q = search.value.toLowerCase();
+        rows.forEach(function(row) {
+            const divMatch = !activeDivision || row.dataset.div === activeDivision;
+            const textMatch = !q || row.textContent.toLowerCase().includes(q);
+            row.style.display = (divMatch && textMatch) ? '' : 'none';
+        });
+    }
+
+    search.addEventListener('input', applyFilters);
+
+    filterBtns.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            filterBtns.forEach(function(b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            activeDivision = btn.dataset.div;
+            applyFilters();
+        });
+    });
+
+    initSortableTable(document.getElementById('acct-table'));
+})();
+</script>
+{% endblock %}

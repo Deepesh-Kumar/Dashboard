@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Production Upgrade Tracker</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+  .header { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-bottom: 1px solid #334155; padding: 24px 32px; display: flex; justify-content: space-between; align-items: center; }
+  .header-left h1 { font-size: 24px; font-weight: 700; color: #f8fafc; margin-bottom: 4px; }
+  .header-left p { font-size: 14px; color: #94a3b8; }
+  .header-right { display: flex; gap: 10px; align-items: center; }
+  .refresh-btn { position: relative; padding: 10px 20px; background: #1e40af; color: #e2e8f0; border: 1px solid #3b82f6; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 8px; }
+  .refresh-btn:hover { background: #2563eb; }
+  .refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .refresh-btn .spinner { display: none; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.6s linear infinite; }
+  .refresh-btn.loading .spinner { display: inline-block; }
+  .refresh-btn.loading .btn-text { opacity: 0.7; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .tooltip-wrap { position: relative; }
+  .tooltip-wrap::after { content: attr(data-tooltip); position: absolute; bottom: -32px; left: 50%; transform: translateX(-50%); background: #334155; color: #e2e8f0; font-size: 11px; font-weight: 500; padding: 5px 10px; border-radius: 6px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+  .tooltip-wrap:hover::after { opacity: 1; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+  .search-section { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 24px; margin-bottom: 24px; }
+  .search-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+  .search-group { flex: 1; min-width: 150px; }
+  .search-group.wide { flex: 2; min-width: 200px; }
+  .search-group label { display: block; font-size: 12px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+  .search-input { width: 100%; padding: 10px 14px; background: #0f172a; border: 1px solid #475569; border-radius: 8px; color: #f8fafc; font-size: 14px; outline: none; transition: border-color 0.2s; }
+  .search-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); }
+  .search-input::placeholder { color: #64748b; }
+  select.search-input { cursor: pointer; }
+  .toggle-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+  .toggle-label { font-size: 12px; color: #94a3b8; cursor: pointer; user-select: none; }
+  .toggle-switch { position: relative; width: 40px; height: 22px; cursor: pointer; }
+  .toggle-switch input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider { position: absolute; inset: 0; background: #475569; border-radius: 22px; transition: 0.2s; }
+  .toggle-slider::before { content: ''; position: absolute; left: 3px; top: 3px; width: 16px; height: 16px; background: #e2e8f0; border-radius: 50%; transition: 0.2s; }
+  .toggle-switch input:checked + .toggle-slider { background: #3b82f6; }
+  .toggle-switch input:checked + .toggle-slider::before { transform: translateX(18px); }
+  .stats { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+  .stat-card { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 16px 20px; flex: 1; min-width: 140px; }
+  .stat-card .label { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+  .stat-card .value { font-size: 28px; font-weight: 700; color: #f8fafc; margin-top: 4px; }
+  .stat-card .sub { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+  .results-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .results-header h2 { font-size: 16px; font-weight: 600; color: #cbd5e1; }
+  .results-count { font-size: 13px; color: #64748b; }
+  .event-card { background: #1e293b; border: 1px solid #334155; border-radius: 10px; margin-bottom: 10px; overflow: hidden; transition: border-color 0.2s; }
+  .event-card:hover { border-color: #475569; }
+  .event-card.highlight { border-color: #3b82f6; box-shadow: 0 0 0 1px rgba(59,130,246,0.3); }
+  .event-header { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; cursor: pointer; user-select: none; }
+  .event-title { font-size: 15px; font-weight: 600; color: #f8fafc; }
+  .event-meta { display: flex; gap: 10px; align-items: center; flex-shrink: 0; }
+  .badge { padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+  .badge-az0 { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+  .badge-az1 { background: rgba(168, 85, 247, 0.15); color: #c084fc; }
+  .badge-prep { background: rgba(234, 179, 8, 0.15); color: #fbbf24; }
+  .badge-past { background: rgba(100, 116, 139, 0.15); color: #94a3b8; }
+  .badge-upcoming { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
+  .badge-today { background: rgba(234, 179, 8, 0.15); color: #fbbf24; }
+  .badge-release { background: rgba(244, 114, 182, 0.15); color: #f472b6; }
+  .event-date { font-size: 13px; color: #94a3b8; white-space: nowrap; }
+  .event-body { padding: 0 18px 16px; display: none; }
+  .event-body.open { display: block; }
+  .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .detail-section h3 { font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+  .tenant-list { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tenant-tag { padding: 4px 10px; background: #0f172a; border: 1px solid #334155; border-radius: 6px; font-size: 12px; color: #cbd5e1; }
+  .tenant-tag.match { background: rgba(59, 130, 246, 0.2); border-color: #3b82f6; color: #93c5fd; font-weight: 600; }
+  .csn-list { font-size: 12px; color: #94a3b8; line-height: 1.8; }
+  .csn-item { font-family: 'SF Mono', 'Fira Code', monospace; }
+  .csn-item.match { color: #93c5fd; font-weight: 600; }
+  .event-links { margin-top: 12px; display: flex; gap: 12px; }
+  .event-links a { font-size: 12px; color: #3b82f6; text-decoration: none; }
+  .event-links a:hover { text-decoration: underline; }
+  .no-results { text-align: center; padding: 60px 20px; color: #64748b; }
+  .no-results .icon { font-size: 48px; margin-bottom: 12px; }
+  .expand-icon { color: #64748b; transition: transform 0.2s; font-size: 14px; }
+  .expand-icon.open { transform: rotate(90deg); }
+  mark { background: rgba(250, 204, 21, 0.3); color: #fef08a; border-radius: 2px; padding: 0 2px; }
+  .tenant-index { margin-top: 16px; }
+  .tenant-index summary { cursor: pointer; font-size: 13px; color: #94a3b8; margin-bottom: 8px; }
+  .tenant-grid { display: flex; flex-wrap: wrap; gap: 4px; }
+  .tenant-grid .t { padding: 3px 8px; background: #0f172a; border: 1px solid #1e293b; border-radius: 4px; font-size: 11px; color: #64748b; cursor: pointer; transition: all 0.15s; }
+  .tenant-grid .t:hover { border-color: #3b82f6; color: #93c5fd; }
+  /* Cross-release view */
+  .xrel-section { margin-bottom: 20px; }
+  .xrel-tenant-name { font-size: 18px; font-weight: 700; color: #f8fafc; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #334155; }
+  .xrel-release { margin-bottom: 16px; margin-left: 16px; }
+  .xrel-release-header { font-size: 14px; font-weight: 600; color: #f472b6; margin-bottom: 8px; }
+  .xrel-event-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: #0f172a; border: 1px solid #1e293b; border-radius: 6px; margin-bottom: 4px; font-size: 13px; }
+  .xrel-event-row .badge { font-size: 10px; }
+  .xrel-event-summary { color: #cbd5e1; flex: 1; }
+  .xrel-event-date { color: #64748b; font-size: 12px; white-space: nowrap; }
+  .xrel-event-status { color: #94a3b8; font-size: 12px; }
+  .loading { text-align: center; padding: 40px; color: #64748b; }
+  .toast { position: fixed; bottom: 24px; right: 24px; background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 14px 20px; color: #e2e8f0; font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); transform: translateY(100px); opacity: 0; transition: all 0.3s; z-index: 100; }
+  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast.error { border-color: #ef4444; }
+  .toast.success { border-color: #22c55e; }
+  @media (max-width: 768px) {
+    .detail-grid { grid-template-columns: 1fr; }
+    .search-row { flex-direction: column; }
+    .search-group { min-width: 100% !important; }
+    .event-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+    .event-meta { width: 100%; justify-content: flex-start; }
+    .header { flex-direction: column; gap: 12px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <h1 id="pageTitle">Production Upgrade Tracker</h1>
+    <p id="pageSubtitle">Loading...</p>
+  </div>
+  <div class="header-right">
+    <div class="tooltip-wrap" data-tooltip="Fetch new release data from Google Calendar">
+      <button class="refresh-btn" id="refreshBtn" onclick="refreshFromCalendar()">
+        <span class="spinner"></span>
+        <span class="btn-text">Fetch New Release</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+  <div class="search-section">
+    <div class="search-row">
+      <div class="search-group">
+        <label>Release</label>
+        <select class="search-input" id="releaseFilter" onchange="onReleaseChange()">
+          <option value="">All Releases</option>
+        </select>
+      </div>
+      <div class="search-group wide">
+        <label>Search Tenants, CSNs, or Batch</label>
+        <input type="text" class="search-input" id="searchInput" placeholder="e.g. viasat, bnsf, CSN-PRODUCTION-US-EAST, Batch-3..." autofocus>
+      </div>
+      <div class="search-group">
+        <label>Availability Zone</label>
+        <select class="search-input" id="azFilter" onchange="render()">
+          <option value="">All</option>
+          <option value="AZ0">AZ0</option>
+          <option value="AZ1">AZ1</option>
+          <option value="prep">Pre-Upgrade / Services</option>
+        </select>
+      </div>
+      <div class="search-group">
+        <label>Time</label>
+        <select class="search-input" id="timeFilter" onchange="render()">
+          <option value="">All Events</option>
+          <option value="upcoming">Upcoming</option>
+          <option value="past">Past</option>
+        </select>
+      </div>
+    </div>
+    <div class="toggle-row">
+      <label class="toggle-switch">
+        <input type="checkbox" id="crossReleaseToggle" onchange="render()">
+        <span class="toggle-slider"></span>
+      </label>
+      <span class="toggle-label" onclick="document.getElementById('crossReleaseToggle').click()">Cross-release tenant search (find a tenant across all releases)</span>
+    </div>
+  </div>
+
+  <div class="stats" id="stats"></div>
+
+  <div id="tenantIndex"></div>
+
+  <div class="results-header">
+    <h2>Upgrade Schedule</h2>
+    <span class="results-count" id="resultsCount"></span>
+  </div>
+  <div id="results"><div class="loading">Loading events...</div></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const now = new Date();
+let allReleases = [];
+let currentEvents = [];
+let searchTimeout = null;
+
+// --- Init ---
+async function init() {
+  allReleases = await fetchJson('/api/releases');
+  populateReleaseDropdown();
+  await loadEvents();
+}
+
+function populateReleaseDropdown() {
+  const sel = document.getElementById('releaseFilter');
+  sel.innerHTML = '<option value="">All Releases</option>';
+  allReleases.forEach(r => {
+    const opt = document.createElement('option');
+    opt.value = r.name;
+    opt.textContent = `${r.name} (${r.event_count} events, ${r.tenant_count} tenants)`;
+    sel.appendChild(opt);
+  });
+  // Default to most recent release
+  if (allReleases.length) {
+    sel.value = allReleases[0].name;
+  }
+  updateHeader();
+}
+
+function updateHeader() {
+  const rel = document.getElementById('releaseFilter').value;
+  const info = allReleases.find(r => r.name === rel);
+  if (rel && info) {
+    document.getElementById('pageTitle').textContent = `${rel} Production Upgrade Tracker`;
+    document.getElementById('pageSubtitle').textContent =
+      `${info.event_count} events \u2022 ${info.tenant_count} tenants \u2022 ${allReleases.length} release(s) tracked`;
+  } else {
+    const total = allReleases.reduce((s, r) => s + r.event_count, 0);
+    const tenants = allReleases.reduce((s, r) => s + r.tenant_count, 0);
+    document.getElementById('pageTitle').textContent = 'Production Upgrade Tracker';
+    document.getElementById('pageSubtitle').textContent =
+      `${total} events across ${allReleases.length} releases \u2022 ${tenants} tenants`;
+  }
+}
+
+async function onReleaseChange() {
+  updateHeader();
+  await loadEvents();
+}
+
+async function loadEvents() {
+  const release = document.getElementById('releaseFilter').value;
+  const params = new URLSearchParams();
+  if (release) params.set('release', release);
+  currentEvents = await fetchJson('/api/events?' + params.toString());
+  buildTenantIndex();
+  render();
+}
+
+// --- Fetch helper ---
+async function fetchJson(url) {
+  try {
+    const r = await fetch(url);
+    return await r.json();
+  } catch (e) {
+    showToast('Failed to load data: ' + e.message, 'error');
+    return [];
+  }
+}
+
+// --- Rendering ---
+function parseDate(s) { return s ? new Date(s) : null; }
+function formatDate(d) { return d ? d.toLocaleString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit', timeZoneName:'short' }) : 'N/A'; }
+function formatShortDate(d) { return d ? d.toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }) : ''; }
+function getTimeBadge(d) { if (!d) return ''; return d > now ? 'upcoming' : 'past'; }
+function escapeHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function highlightText(text, q) {
+  if (!q || !text) return escapeHtml(text||'');
+  const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return escapeHtml(text).replace(new RegExp('(' + escaped + ')', 'gi'), '<mark>$1</mark>');
+}
+
+function tenantFullString(t) {
+  let s = t.name;
+  if (t.status) s += '(' + t.status + ')';
+  if (t.size_info) s += '(' + t.size_info + ')';
+  return s;
+}
+
+function buildTenantIndex() {
+  const names = new Set();
+  currentEvents.forEach(e => (e.tenants||[]).forEach(t => names.add(t.name)));
+  const sorted = [...names].sort((a,b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+
+  const el = document.getElementById('tenantIndex');
+  if (!sorted.length) { el.innerHTML = ''; return; }
+  el.innerHTML = '<details class="tenant-index"><summary>Browse all ' + sorted.length + ' tenants</summary><div class="tenant-grid">' +
+    sorted.map(t => '<span class="t" onclick="searchTenant(\'' + t.replace(/'/g,"\\'") + '\')">' + escapeHtml(t) + '</span>').join('') +
+    '</div></details>';
+}
+
+function searchTenant(name) {
+  document.getElementById('searchInput').value = name;
+  render();
+}
+
+async function render() {
+  const query = document.getElementById('searchInput').value.trim();
+  const crossRelease = document.getElementById('crossReleaseToggle').checked;
+
+  if (crossRelease && query.length >= 2) {
+    await renderCrossRelease(query);
+    return;
+  }
+
+  renderSingleRelease(query);
+}
+
+function renderSingleRelease(query) {
+  const azFilter = document.getElementById('azFilter').value;
+  const timeFilter = document.getElementById('timeFilter').value;
+  const q = query.toLowerCase();
+
+  let filtered = currentEvents.filter(e => {
+    if (azFilter && e.az !== azFilter) return false;
+    const d = parseDate(e.start_time);
+    if (timeFilter && getTimeBadge(d) !== timeFilter) return false;
+    if (q) {
+      const searchable = (
+        e.summary + ' ' +
+        (e.tenants_raw || '') + ' ' +
+        (e.csns||[]).join(' ')
+      ).toLowerCase();
+      if (!searchable.includes(q)) return false;
+    }
+    return true;
+  });
+
+  // Stats
+  const batches = filtered.filter(e => e.summary.includes('Batch')).length;
+  const tenantSet = new Set();
+  filtered.forEach(e => (e.tenants||[]).forEach(t => tenantSet.add(t.name.toLowerCase())));
+  const upcoming = filtered.filter(e => getTimeBadge(parseDate(e.start_time))==='upcoming').length;
+
+  document.getElementById('stats').innerHTML =
+    '<div class="stat-card"><div class="label">Events</div><div class="value">'+filtered.length+'</div><div class="sub">matching</div></div>' +
+    '<div class="stat-card"><div class="label">Batches</div><div class="value">'+batches+'</div><div class="sub">upgrade batches</div></div>' +
+    '<div class="stat-card"><div class="label">Tenants</div><div class="value">'+tenantSet.size+'</div><div class="sub">unique</div></div>' +
+    '<div class="stat-card"><div class="label">Upcoming</div><div class="value">'+upcoming+'</div><div class="sub">remaining</div></div>';
+
+  document.getElementById('resultsCount').textContent = filtered.length + ' event' + (filtered.length!==1?'s':'');
+
+  if (!filtered.length) {
+    document.getElementById('results').innerHTML = '<div class="no-results"><div class="icon">&#128269;</div><p>No events match your search</p></div>';
+    return;
+  }
+
+  let html = '';
+  filtered.forEach((e, i) => {
+    const startDate = parseDate(e.start_time);
+    const endDate = parseDate(e.end_time);
+    const tb = getTimeBadge(startDate);
+    const tenants = e.tenants || [];
+    const tenantMatch = q && (e.tenants_raw||'').toLowerCase().includes(q);
+
+    html += '<div class="event-card'+(tenantMatch?' highlight':'')+'">';
+    html += '<div class="event-header" onclick="toggleBody('+i+')">';
+    html += '<div style="min-width:0"><div class="event-title">'+highlightText(e.summary,q)+'</div>';
+    if (tenantMatch && tenants.length) {
+      const matched = tenants.filter(t => t.name.toLowerCase().includes(q)).map(t=>t.name);
+      if (matched.length) html += '<div style="font-size:12px;color:#60a5fa;margin-top:3px">Tenant match: '+matched.join(', ')+'</div>';
+    }
+    html += '</div>';
+    html += '<div class="event-meta">';
+    if (e.release_name) html += '<span class="badge badge-release">'+e.release_name+'</span>';
+    html += '<span class="badge badge-'+e.az+'">'+e.az.toUpperCase()+'</span>';
+    html += '<span class="badge badge-'+tb+'">'+tb+'</span>';
+    html += '<span class="event-date">'+formatShortDate(startDate)+'</span>';
+    html += '<span class="expand-icon" id="icon-'+i+'">&#9654;</span>';
+    html += '</div></div>';
+
+    html += '<div class="event-body" id="body-'+i+'">';
+    html += '<div class="detail-grid">';
+    html += '<div class="detail-section"><h3>Tenants ('+tenants.length+')</h3><div class="tenant-list">';
+    if (!tenants.length) html += '<span style="color:#64748b;font-size:12px">No tenant data</span>';
+    tenants.forEach(t => {
+      const m = q && t.name.toLowerCase().includes(q);
+      html += '<span class="tenant-tag'+(m?' match':'')+'">'+highlightText(tenantFullString(t),q)+'</span>';
+    });
+    html += '</div></div>';
+    html += '<div class="detail-section"><h3>CSNs ('+(e.csns||[]).length+')</h3><div class="csn-list">';
+    if (!e.csns||!e.csns.length) html += '<span style="color:#64748b">No CSN data</span>';
+    (e.csns||[]).forEach(c => {
+      const m = q && c.toLowerCase().includes(q);
+      html += '<div class="csn-item'+(m?' match':'')+'">'+highlightText(c,q)+'</div>';
+    });
+    html += '</div></div></div>';
+    html += '<div style="margin-top:12px;font-size:12px;color:#94a3b8"><strong>Start:</strong> '+formatDate(startDate)+' &bull; <strong>End:</strong> '+formatDate(endDate)+'</div>';
+    if (e.html_link) {
+      html += '<div class="event-links">';
+      html += '<a href="'+e.html_link+'" target="_blank">Open in Calendar &#8599;</a>';
+      html += '</div>';
+    }
+    html += '</div></div>';
+  });
+
+  document.getElementById('results').innerHTML = html;
+}
+
+async function renderCrossRelease(query) {
+  document.getElementById('stats').innerHTML =
+    '<div class="stat-card"><div class="label">Mode</div><div class="value" style="font-size:18px">Cross-Release</div><div class="sub">searching all releases</div></div>';
+
+  document.getElementById('results').innerHTML = '<div class="loading">Searching across all releases...</div>';
+
+  const data = await fetchJson('/api/tenants?q=' + encodeURIComponent(query));
+
+  const tenantNames = Object.keys(data);
+  document.getElementById('resultsCount').textContent = tenantNames.length + ' tenant' + (tenantNames.length!==1?'s':'') + ' found';
+
+  if (!tenantNames.length) {
+    document.getElementById('results').innerHTML = '<div class="no-results"><div class="icon">&#128269;</div><p>No tenants matching "' + escapeHtml(query) + '" found across any release</p></div>';
+    return;
+  }
+
+  let html = '';
+  tenantNames.sort((a,b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+
+  tenantNames.forEach(tenant => {
+    html += '<div class="xrel-section">';
+    html += '<div class="xrel-tenant-name">' + highlightText(tenant, query) + '</div>';
+
+    const releases = data[tenant];
+    const relNames = Object.keys(releases).sort();
+
+    relNames.forEach(relName => {
+      html += '<div class="xrel-release">';
+      html += '<div class="xrel-release-header">' + relName + ' (' + releases[relName].length + ' events)</div>';
+
+      releases[relName].forEach(ev => {
+        const d = parseDate(ev.start_time);
+        const tb = getTimeBadge(d);
+        html += '<div class="xrel-event-row">';
+        html += '<span class="badge badge-' + ev.az + '">' + (ev.az||'').toUpperCase() + '</span>';
+        html += '<span class="badge badge-' + tb + '">' + tb + '</span>';
+        html += '<span class="xrel-event-summary">' + escapeHtml(ev.summary) + '</span>';
+        if (ev.status) html += '<span class="xrel-event-status">' + ev.status + (ev.size_info ? '(' + ev.size_info + ')' : '') + '</span>';
+        html += '<span class="xrel-event-date">' + formatShortDate(d) + '</span>';
+        if (ev.html_link) html += '<a href="' + ev.html_link + '" target="_blank" style="color:#3b82f6;font-size:12px;text-decoration:none">&#8599;</a>';
+        html += '</div>';
+      });
+
+      html += '</div>';
+    });
+
+    html += '</div>';
+  });
+
+  document.getElementById('results').innerHTML = html;
+}
+
+// --- UI helpers ---
+function toggleBody(i) {
+  const body = document.getElementById('body-' + i);
+  const icon = document.getElementById('icon-' + i);
+  if (body) {
+    body.classList.toggle('open');
+    icon.classList.toggle('open');
+  }
+}
+
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + (type||'');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.className = 'toast', 4000);
+}
+
+async function refreshFromCalendar() {
+  const btn = document.getElementById('refreshBtn');
+  btn.disabled = true;
+  btn.classList.add('loading');
+
+  try {
+    const resp = await fetch('/api/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fetch: true }),
+    });
+    const data = await resp.json();
+
+    // OAuth flow: needs authorization first
+    if (data.needs_auth) {
+      showToast('Opening Google login — authorize access, then click Fetch again.', 'info');
+      window.open(data.auth_url, '_blank');
+      return;
+    }
+
+    if (!resp.ok) {
+      showToast('Refresh failed: ' + (data.error || 'Unknown error'), 'error');
+      return;
+    }
+
+    const releases = data.releases_found || [];
+    const count = data.events_imported || 0;
+    const pruned = data.releases_pruned || [];
+    let msg = `Imported ${count} events across ${releases.join(', ')}`;
+    if (pruned.length) msg += ` (pruned: ${pruned.join(', ')})`;
+    showToast(msg, 'success');
+
+    // Reload UI
+    allReleases = await fetchJson('/api/releases');
+    populateReleaseDropdown();
+    await loadEvents();
+  } catch (e) {
+    showToast('Refresh failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('loading');
+  }
+}
+
+// Debounced search
+document.getElementById('searchInput').addEventListener('input', () => {
+  clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(render, 200);
+});
+
+// Start
+init();
+</script>
+</body>
+</html>

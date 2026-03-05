@@ -1,0 +1,75 @@
+name: Weekly Dashboard Refresh
+
+on:
+  schedule:
+    - cron: '0 2 * * 0'   # Every Sunday at 2AM UTC
+  workflow_dispatch:        # Allow manual trigger from GitHub UI
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r src/requirements.txt openpyxl
+
+      - name: Run collector (fetch from Selector API)
+        env:
+          DASHBOARD_LOCAL: "1"
+          SELECTOR_AI_API_KEY: ${{ secrets.SELECTOR_AI_API_KEY }}
+        run: python3 src/collector.py
+
+      - name: Run generator (build static HTML)
+        env:
+          DASHBOARD_LOCAL: "1"
+        run: python3 src/generator.py
+
+      - name: Get runner public IP
+        id: ip
+        run: echo "addr=$(curl -s https://checkip.amazonaws.com)" >> $GITHUB_OUTPUT
+
+      - name: Allow runner IP in security group
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-west-2
+        run: |
+          aws ec2 authorize-security-group-ingress \
+            --group-id sg-064f95d5e864d5d32 \
+            --protocol tcp --port 22 \
+            --cidr ${{ steps.ip.outputs.addr }}/32
+
+      - name: Deploy to EC2
+        env:
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          echo "$EC2_SSH_KEY" > /tmp/ec2_key.pem
+          chmod 600 /tmp/ec2_key.pem
+          rsync -az --delete -e "ssh -i /tmp/ec2_key.pem -o StrictHostKeyChecking=no" \
+            output/ ubuntu@54.190.170.4:/opt/dashboard/output/
+          rsync -az -e "ssh -i /tmp/ec2_key.pem -o StrictHostKeyChecking=no" \
+            static/ ubuntu@54.190.170.4:/opt/dashboard/static/
+          ssh -i /tmp/ec2_key.pem -o StrictHostKeyChecking=no ubuntu@54.190.170.4 \
+            "sudo rsync -a --delete /opt/dashboard/output/ /var/www/dashboard/ && \
+             sudo rsync -a /opt/dashboard/static/ /var/www/dashboard/static/"
+          rm -f /tmp/ec2_key.pem
+
+      - name: Remove runner IP from security group
+        if: always()
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-west-2
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --group-id sg-064f95d5e864d5d32 \
+            --protocol tcp --port 22 \
+            --cidr ${{ steps.ip.outputs.addr }}/32

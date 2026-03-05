@@ -1,0 +1,22 @@
+# Data files (generated, not source)
+data/latest.json
+data/*.json
+output/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Env
+.env
+*.env
+
+# macOS
+.DS_Store
+
+# Logs
+*.log

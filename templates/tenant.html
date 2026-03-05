@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+
+{% block title %}{{ tenant.prefix }} - Alkira Tenant Dashboard{% endblock %}
+{% block content %}
+<div class="page-header">
+    <a href="/index.html" class="back-link">&larr; All Tenants</a>
+    <h1>{{ tenant.prefix }}</h1>
+</div>
+
+<!-- CXP Summary Table -->
+<section class="section">
+    <h2>CXP Summary</h2>
+    {% if tenant.segment_count > 0 %}
+    <p><strong>Total Segments: {{ tenant.segment_count }}</strong></p>
+    {% endif %}
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>CXP Name</th>
+                    <th>Cloud</th>
+                    <th>Size</th>
+                    <th>Peak BW RX (30d)</th>
+                    <th>Over Alloc (30d)</th>
+                    <th>Peak BW TX (30d)</th>
+                    <th>Data Egress (30d)</th>
+                    {% for col in tenant.connector_type_cols %}<th>{{ col }}</th>{% endfor %}
+                    <th>Services</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for cxp in tenant.cxp_summary %}
+                <tr>
+                    <td>{{ cxp.cxp_name }}</td>
+                    <td><span class="badge {{ cxp.badge_class }}">{{ cxp.cloud }}</span></td>
+                    <td>{{ cxp.size if cxp.size else '—' }}</td>
+                    <td>{{ cxp.peak_rx_fmt }}</td>
+                    <td>{% if cxp.rx_overage_count %}{{ cxp.rx_overage_count }}x{% else %}—{% endif %}</td>
+                    <td>{{ cxp.peak_tx_fmt }}</td>
+                    <td><a href="#{{ cxp.anchor_id }}" style="text-decoration:none;">{{ cxp.egress_fmt }}</a></td>
+                    {% for col in tenant.connector_type_cols %}
+                    <td>{{ cxp.connectors_by_type.get(col) or '—' }}</td>
+                    {% endfor %}
+                    <td>
+                      {% for svc in cxp.services_list %}
+                        {{ svc.name }}{% if svc.count > 1 %} ({{ svc.count }}){% endif %}{% if not loop.last %}, {% endif %}
+                      {% endfor %}
+                      {% if not cxp.services_list %}—{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if tenant.cxp_summary and tenant.connector_type_cols %}
+                <tr style="border-top: 2px solid #ccc; font-weight: bold;">
+                    <td colspan="6">Total</td>
+                    <td>{{ tenant.egress_total_fmt }}</td>
+                    {% for col in tenant.connector_type_cols %}
+                    <td>{{ tenant.connector_type_totals[col] }}</td>
+                    {% endfor %}
+                    <td>{{ tenant.services_total if tenant.services_total else '—' }}</td>
+                </tr>
+                {% endif %}
+                {% if not tenant.cxp_summary %}
+                <tr><td colspan="{{ 7 + tenant.connector_type_cols|length + 1 }}" class="no-data">No CXP data available</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+
+
+<!-- Data Egress Breakdown -->
+<section class="section">
+    <h2>Data Egress Breakdown (30d)</h2>
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>CXP</th>
+                    <th>Service TX</th>
+                    <th>Inter-CXP TX</th>
+                    <th>INET TX</th>
+                    <th>Branch TX</th>
+                    <th>Cloud TX</th>
+                    <th>Total Egress</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for cxp in tenant.cxp_summary %}
+                <tr id="{{ cxp.anchor_id }}">
+                    <td>{{ cxp.cxp_name }}</td>
+                    {% if cxp.egress_detail.has_data %}
+                    <td>{{ cxp.egress_detail.svc_tx_fmt }}</td>
+                    <td>{{ cxp.egress_detail.intercxp_tx_fmt }}</td>
+                    <td>{{ cxp.egress_detail.inet_tx_fmt }}</td>
+                    <td>{{ cxp.egress_detail.branch_tx_fmt }}</td>
+                    <td>{{ cxp.egress_detail.cloud_tx_fmt }}</td>
+                    {% else %}
+                    <td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
+                    {% endif %}
+                    <td><strong>{{ cxp.egress_fmt }}</strong></td>
+                </tr>
+                {% endfor %}
+                {% if tenant.cxp_summary %}
+                <tr style="border-top: 2px solid #ccc; font-weight: bold;">
+                    <td>Total</td>
+                    <td>{{ tenant.egress_breakdown_totals.svc_tx }}</td>
+                    <td>{{ tenant.egress_breakdown_totals.intercxp_tx }}</td>
+                    <td>{{ tenant.egress_breakdown_totals.inet_tx }}</td>
+                    <td>{{ tenant.egress_breakdown_totals.branch_tx }}</td>
+                    <td>{{ tenant.egress_breakdown_totals.cloud_tx }}</td>
+                    <td><strong>{{ tenant.egress_breakdown_totals.total }}</strong></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="no-data">No egress data available</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- CXP BW Time Series -->
+{% if tenant.has_cxp_ts %}
+<section class="section">
+    <h2>CXP BW RX Over Time (Last 30 Days)</h2>
+    <div class="ts-controls">
+        <label for="cxp-ts-select">CXP:</label>
+        <select id="cxp-ts-select"></select>
+        <span id="cxp-ts-alloc" class="ts-alloc-label"></span>
+    </div>
+    <div class="chart-container" style="height:320px;position:relative;">
+        <canvas id="chart-cxp-ts"></canvas>
+    </div>
+</section>
+{% endif %}
+
+<!-- Top Connectors by Utilization -->
+<section class="section">
+    <h2>Top Connectors by Utilization</h2>
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>CXP</th>
+                    <th>Size</th>
+                    <th>Utilization</th>
+                    <th>Peak BW (30d)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in tenant.top_utilization %}
+                <tr>
+                    <td>{{ u.name }}</td>
+                    <td>{{ u.cxp_name }}</td>
+                    <td>{{ u.size }}</td>
+                    <td class="{{ u.util_class }}">{{ u.value_fmt }}</td>
+                    <td>{{ u.peak_bw_fmt }}</td>
+                </tr>
+                {% endfor %}
+                {% if not tenant.top_utilization %}
+                <tr><td colspan="5" class="no-data">No utilization data available</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/dashboard.js"></script>
+{% if tenant.has_cxp_ts %}
+<script>
+    initCxpTimeSeriesChart({{ tenant.cxp_ts_json | safe }});
+</script>
+{% endif %}
+{% endblock %}

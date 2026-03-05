@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Alkira Tenant Dashboard</title>
+    <style>
+        :root {
+            --bg: #f5f7fa; --surface: #ffffff; --border: #e2e8f0;
+            --text: #1a202c; --text-secondary: #718096;
+            --primary: #2b6cb0; --primary-hover: #2c5282;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg); color: var(--text);
+            display: flex; align-items: center; justify-content: center;
+            min-height: 100vh;
+        }
+        .login-card {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 12px; padding: 40px; width: 100%; max-width: 380px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05); text-align: center;
+        }
+        .login-brand { font-size: 20px; font-weight: 700; color: var(--primary); margin-bottom: 8px; }
+        .login-subtitle { color: var(--text-secondary); font-size: 14px; margin-bottom: 32px; }
+        .okta-btn {
+            display: block; width: 100%; padding: 13px;
+            background: var(--primary); color: #fff;
+            border: none; border-radius: 6px;
+            font-size: 15px; font-weight: 600; cursor: pointer;
+            text-decoration: none; transition: background 0.2s;
+        }
+        .okta-btn:hover { background: var(--primary-hover); }
+        .divider {
+            display: flex; align-items: center; gap: 12px;
+            margin: 24px 0 16px;
+            color: var(--text-secondary); font-size: 12px;
+        }
+        .divider::before, .divider::after {
+            content: ''; flex: 1; height: 1px; background: var(--border);
+        }
+        .local-link {
+            display: block; font-size: 13px; color: var(--text-secondary);
+            text-decoration: none;
+        }
+        .local-link:hover { color: var(--primary); text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="login-brand">Alkira Tenant Dashboard</div>
+        <div class="login-subtitle">Sign in to continue</div>
+
+        <a href="/oauth2/start?rd=/home.html" class="okta-btn">Sign in with Okta SSO</a>
+
+        <div class="divider">or</div>
+
+        <a href="/login.html" class="local-link">Use local credentials (last resort)</a>
+    </div>
+</body>
+</html>

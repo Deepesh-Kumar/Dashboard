@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Alkira Tenant Dashboard{% endblock %}</title>
+    <link rel="stylesheet" href="{% block css_path %}/static/style.css{% endblock %}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <nav class="navbar">
+        <a href="/home.html" class="nav-brand">Alkira Tenant Dashboard</a>
+        <div class="nav-right">
+            <span class="nav-info">Last Updated: {{ collected_at[:10] if collected_at else 'N/A' }}</span>
+            <a href="#" class="logout-btn" onclick="logout(); return false;">Logout</a>
+        </div>
+    </nav>
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+    <footer class="footer">
+        <p>Alkira Tenant Metrics Dashboard &mdash; Data collected monthly from Selector API</p>
+        <p>Last Updated: {{ collected_at if collected_at else 'N/A' }}</p>
+    </footer>
+    {% block scripts %}{% endblock %}
+    <script>
+    function logout() {
+        window.location.replace('/oauth2/sign_out');
+    }
+    </script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}Alkira Dashboard Portal{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Dashboard Portal</h1>
+    <p class="subtitle">Alkira network metrics and insights</p>
+</div>
+
+<div class="portal-grid">
+    <a href="/index.html" class="portal-card">
+        <h2 class="portal-card-title">Tenant Dashboard</h2>
+        <p class="portal-card-desc">CXP metrics, bandwidth utilization, connector usage, and data egress across all Alkira tenants.</p>
+        <div class="portal-card-stats">
+            <span class="portal-card-stat">{{ active_count }} active tenants</span>
+            <span class="portal-card-stat">{{ totals.cloud_connectors }} cloud</span>
+            <span class="portal-card-stat">{{ totals.onprem_connectors }} on-prem</span>
+        </div>
+        <span class="portal-card-link">View Tenants &rarr;</span>
+    </a>
+
+    <a href="/account-mapping.html" class="portal-card">
+        <h2 class="portal-card-title">Account Mapping</h2>
+        <p class="portal-card-desc">Account owners, SAs, and SEs across all regions. Covers Sales East, West, International, and MidMarket.</p>
+        <div class="portal-card-stats">
+            <span class="portal-card-stat">{{ account_count }} customers</span>
+            <span class="portal-card-stat">4 regions</span>
+        </div>
+        <span class="portal-card-link">View Accounts &rarr;</span>
+    </a>
+
+    <div class="portal-card portal-card-disabled">
+        <h2 class="portal-card-title">Salesforce</h2>
+        <p class="portal-card-desc">Customer account and opportunity data from Salesforce CRM.</p>
+        <span class="portal-card-badge">Coming Soon</span>
+    </div>
+
+    <div class="portal-card portal-card-disabled">
+        <h2 class="portal-card-title">More Tools</h2>
+        <p class="portal-card-desc">Additional integrations and analytics tools.</p>
+        <span class="portal-card-badge">Coming Soon</span>
+    </div>
+</div>
+{% endblock %}

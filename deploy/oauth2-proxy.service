@@ -1,0 +1,12 @@
+[Unit]
+Description=OAuth2 Proxy (Okta)
+After=network.target
+
+[Service]
+User=ubuntu
+ExecStart=/usr/local/bin/oauth2-proxy --config=/etc/oauth2-proxy/oauth2-proxy.cfg
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
