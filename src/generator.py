@@ -479,7 +479,8 @@ def build_tenant_detail(prefix, data):
         s["cxps"] = sorted(s["cxps"])
 
     # CXP size breakdown — use MAX connector size per CXP.
-    # The max size = the highest-capacity CSN node at that CXP.
+    # Primary source: utilization (s2_connector_bw_pct). Fallback: cxp_thresh_sizes
+    # (from cxp_highThresh PromQL metric — available even when connectors are gone).
     cxp_sizes = {}
     for entry in data.get("utilization", []):
         cxp = entry.get("cxp_name", "")
@@ -487,6 +488,11 @@ def build_tenant_detail(prefix, data):
         if cxp and size:
             if cxp not in cxp_sizes or size_rank(size) > size_rank(cxp_sizes[cxp]):
                 cxp_sizes[cxp] = size
+    for entry in data.get("cxp_thresh_sizes", []):
+        cxp = entry.get("cxp_name", "")
+        size = entry.get("size", "")
+        if cxp and size and cxp not in cxp_sizes:
+            cxp_sizes[cxp] = size
     def format_bw(gbps):
         """Format a Gbps value, using Mbps for sub-1G values."""
         if gbps is None:

@@ -151,6 +151,18 @@ def query_selector(command, session_id=None):
     return []
 
 
+def promql_query(expr, session_id=None):
+    """Run a PromQL instant query via query_selector_tsdb_metric_query."""
+    result = mcp_call_tool(
+        "query_selector_tsdb_metric_query",
+        {"params": {"expr": expr, "query_type": "instant"}},
+        session_id=session_id,
+    )
+    if result and isinstance(result, dict) and "data" in result:
+        return result["data"].get("result", [])
+    return []
+
+
 def extract_rows(data):
     """Normalize data into a list of dicts."""
     if isinstance(data, list):
@@ -393,7 +405,7 @@ def collect_all():
             "bw_rx_peak": [], "bw_tx_peak": [],
             "connectors": [], "connector_list": [], "utilization": [],
             "peak_utilization": [], "peak_hit_count": [],
-            "cxp_rx_overages": [],
+            "cxp_rx_overages": [], "cxp_thresh_sizes": [],
             "bw_rx_timeseries": {},
         }
 
@@ -576,6 +588,41 @@ def collect_all():
             if cxp not in ts_map:
                 ts_map[cxp] = []
             ts_map[cxp].append([ts, val])
+
+    # Step 12: CXP size from cxp_highThresh (PromQL) — independent of active connectors.
+    # Gives CXP size for tenants whose connectors are deprovisioned (e.g. Arctera).
+    print("  Querying CXP size from cxp_highThresh (PromQL)...")
+    thresh_series = promql_query(
+        "max by (tenantId, cxp_name, size) (cxp_highThresh)",
+        session_id=session_id,
+    )
+    print(f"    Got {len(thresh_series)} cxp_highThresh series")
+
+    # Build tenantId → tenant_prefix reverse mapping (parent tenants only)
+    tenantid_to_prefix = {}
+    for prefix in metrics["tenants"]:
+        if re.match(r'^[a-z-]{3,8}\d{7}$', prefix):
+            tenant_id_str = str(int(prefix[-7:]))
+            tenantid_to_prefix[tenant_id_str] = prefix
+
+    for series in thresh_series:
+        m = series.get("metric", {})
+        tenant_id = m.get("tenantId", "")
+        cxp = m.get("cxp_name", "")
+        size = m.get("size", "")
+        if not (tenant_id and cxp and size):
+            continue
+        prefix = tenantid_to_prefix.get(tenant_id)
+        if not prefix:
+            continue
+        metrics["tenants"][prefix]["cxp_thresh_sizes"].append({
+            "cxp_name": cxp,
+            "size": size,
+        })
+        # Also fill size_lookup so overage calculations benefit
+        key = (prefix, cxp)
+        if key not in size_lookup or size_rank(size) > size_rank(size_lookup[key]):
+            size_lookup[key] = size
 
     # Flag empty tenants
     empty_tenants = [

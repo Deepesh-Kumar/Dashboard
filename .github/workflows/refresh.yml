@@ -1,8 +1,8 @@
 name: Weekly Dashboard Refresh
 
 on:
-  schedule:
-    - cron: '0 2 * * *'   # Every day at 2AM UTC
+  # schedule:
+  #   - cron: '0 2 * * *'   # Disabled — Selector API unreachable from GitHub Actions
   workflow_dispatch:        # Allow manual trigger from GitHub UI
 
 jobs:
