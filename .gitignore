@@ -1,6 +1,8 @@
 # Data files (generated, not source)
 data/latest.json
-data/*.json
+data/metrics-*.json
+data/bw_rx.json
+data/bw_tx.json
 output/
 
 # Python

@@ -763,6 +763,13 @@ def generate():
         with open(accounts_path) as f:
             account_count = len(json.load(f).get("accounts", []))
 
+    # Load feature request links
+    feature_requests_path = os.path.join(DATA_DIR, "feature_requests.json")
+    feature_requests = []
+    if os.path.exists(feature_requests_path):
+        with open(feature_requests_path) as f:
+            feature_requests = json.load(f)
+
     # Generate home page (portal landing page)
     home_template = env.get_template("home.html")
     home_html = home_template.render(
@@ -770,6 +777,7 @@ def generate():
         active_count=active_count,
         totals=totals,
         account_count=account_count,
+        feature_requests=feature_requests,
     )
     with open(os.path.join(OUTPUT_DIR, "home.html"), "w") as f:
         f.write(home_html)

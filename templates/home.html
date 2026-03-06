@@ -30,6 +30,18 @@
         <span class="portal-card-link">View Accounts &rarr;</span>
     </a>
 
+    {% if feature_requests %}
+    <div class="portal-card" style="pointer-events: auto; cursor: default;">
+        <h2 class="portal-card-title">Feature Requests</h2>
+        <p class="portal-card-desc">Alkira release feature tracking dashboards on Jira.</p>
+        <div class="portal-card-links">
+            {% for item in feature_requests %}
+            <a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.name }}</a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
     <div class="portal-card portal-card-disabled">
         <h2 class="portal-card-title">Salesforce</h2>
         <p class="portal-card-desc">Customer account and opportunity data from Salesforce CRM.</p>
