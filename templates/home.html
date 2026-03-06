@@ -30,29 +30,44 @@
         <span class="portal-card-link">View Accounts &rarr;</span>
     </a>
 
-    <a href="https://docs.google.com/document/d/1Ix7AvFmerZ5AkXGG1BJDKf5Y7KOEkJkpNuJsXD2-yYI/edit?tab=t.0#heading=h.4oyhd9foylm0" target="_blank" rel="noopener" class="portal-card">
-        <h2 class="portal-card-title">CXP/Connector Burst SLA Allowed</h2>
-        <p class="portal-card-desc">Burst SLA limits and allowed thresholds per CXP and connector type.</p>
-        <span class="portal-card-link">Open Document &rarr;</span>
-    </a>
+    <div class="portal-card" style="cursor:default;">
+        <h2 class="portal-card-title">Tenant &amp; Connector Limit / SLAs</h2>
+        <p class="portal-card-desc">Resource limits, SLA thresholds, and burst SLA allowances per tenant, CXP, and connector type.</p>
+        <div class="portal-card-links" style="margin-top:10px;">
+            <a href="https://docs.google.com/spreadsheets/d/1Cnui5l_qN95P_dGMfAo5ICggVFtA40d-ceotzeEfNhk/edit?gid=2141541197#gid=2141541197" target="_blank" rel="noopener">Tenant Limits &amp; SLAs (Spreadsheet)</a>
+            <a href="https://docs.google.com/document/d/1Ix7AvFmerZ5AkXGG1BJDKf5Y7KOEkJkpNuJsXD2-yYI/edit?tab=t.0#heading=h.4oyhd9foylm0" target="_blank" rel="noopener">CXP/Connector Burst SLA Allowed (Doc)</a>
+        </div>
+    </div>
 
-    <a href="https://docs.google.com/spreadsheets/d/1Cnui5l_qN95P_dGMfAo5ICggVFtA40d-ceotzeEfNhk/edit?gid=2141541197#gid=2141541197" target="_blank" rel="noopener" class="portal-card">
-        <h2 class="portal-card-title">Tenant Limits &amp; SLAs</h2>
-        <p class="portal-card-desc">Per-tenant resource limits and SLA thresholds across all Alkira deployments.</p>
+    <a href="https://docs.google.com/spreadsheets/d/1xh53zzFnmS1sO8m1M1z7xIHs5q_AF3mB/edit?gid=1907368415#gid=1907368415" target="_blank" rel="noopener" class="portal-card">
+        <h2 class="portal-card-title">CXP Regions</h2>
+        <p class="portal-card-desc">CXP region availability, cloud providers, and geographic coverage across Alkira deployments.</p>
         <span class="portal-card-link">Open Spreadsheet &rarr;</span>
     </a>
 
-    {% if feature_requests %}
-    <div class="portal-card" style="pointer-events: auto; cursor: default;">
-        <h2 class="portal-card-title">Feature Requests</h2>
+    <div class="portal-card" id="feature-requests-card" style="cursor: default;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <h2 class="portal-card-title" style="margin:0;">Feature Requests</h2>
+            <button onclick="openFREditor()" title="Edit links" style="background:none;border:none;cursor:pointer;color:var(--text-secondary);font-size:16px;padding:2px 6px;">✏️</button>
+        </div>
         <p class="portal-card-desc">Alkira release feature tracking dashboards on Jira.</p>
-        <div class="portal-card-links">
-            {% for item in feature_requests %}
-            <a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.name }}</a>
-            {% endfor %}
+        <div class="portal-card-links" id="fr-links">
+            <span style="color:var(--text-secondary);font-size:13px;">Loading...</span>
         </div>
     </div>
-    {% endif %}
+
+    <!-- Feature Requests Edit Modal -->
+    <div id="fr-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+        <div style="background:var(--surface);border-radius:12px;padding:28px;width:100%;max-width:540px;max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+            <h3 style="margin-bottom:16px;">Edit Feature Request Links</h3>
+            <div id="fr-rows" style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;"></div>
+            <button onclick="addFRRow()" style="background:var(--primary-light);color:var(--primary);border:1px solid var(--primary);border-radius:6px;padding:6px 14px;cursor:pointer;font-size:13px;margin-bottom:16px;">+ Add Link</button>
+            <div style="display:flex;gap:10px;justify-content:flex-end;">
+                <button onclick="closeFREditor()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 18px;cursor:pointer;">Cancel</button>
+                <button onclick="saveFRLinks()" style="background:var(--primary);color:#fff;border:none;border-radius:6px;padding:8px 18px;cursor:pointer;font-weight:600;">Save</button>
+            </div>
+        </div>
+    </div>
 
     <div class="portal-card portal-card-disabled">
         <h2 class="portal-card-title">Salesforce</h2>
@@ -66,4 +81,88 @@
         <span class="portal-card-badge">Coming Soon</span>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let frData = [];
+
+async function loadFRLinks() {
+    try {
+        const res = await fetch('/api/feature-requests');
+        frData = await res.json();
+    } catch(e) {
+        frData = [];
+    }
+    renderFRLinks();
+}
+
+function renderFRLinks() {
+    const el = document.getElementById('fr-links');
+    if (!frData.length) { el.innerHTML = '<span style="color:var(--text-secondary);font-size:13px;">No links yet — click ✏️ to add.</span>'; return; }
+    el.innerHTML = frData.map(item =>
+        `<a href="${escHtml(item.url)}" target="_blank" rel="noopener">${escHtml(item.name)}</a>`
+    ).join('');
+}
+
+function openFREditor() {
+    const rows = document.getElementById('fr-rows');
+    rows.innerHTML = '';
+    if (!frData.length) addFRRow();
+    else frData.forEach(item => addFRRow(item.name, item.url));
+    document.getElementById('fr-modal').style.display = 'flex';
+}
+
+function closeFREditor() {
+    document.getElementById('fr-modal').style.display = 'none';
+}
+
+function addFRRow(name='', url='') {
+    const rows = document.getElementById('fr-rows');
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:8px;align-items:center;';
+    row.innerHTML = `
+        <input type="text" placeholder="Link name" value="${escHtml(name)}"
+               style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+        <input type="url" placeholder="https://..." value="${escHtml(url)}"
+               style="flex:2;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+        <button onclick="this.closest('div').remove()" title="Remove"
+                style="background:none;border:none;cursor:pointer;color:var(--text-secondary);font-size:18px;line-height:1;">&times;</button>`;
+    rows.appendChild(row);
+}
+
+async function saveFRLinks() {
+    const rows = document.querySelectorAll('#fr-rows > div');
+    const data = [];
+    for (const row of rows) {
+        const inputs = row.querySelectorAll('input');
+        const name = inputs[0].value.trim();
+        const url = inputs[1].value.trim();
+        if (name && url) data.push({ name, url });
+    }
+    const btn = document.querySelector('#fr-modal button[onclick="saveFRLinks()"]');
+    btn.textContent = 'Saving...'; btn.disabled = true;
+    try {
+        const res = await fetch('/api/feature-requests', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        frData = data;
+        renderFRLinks();
+        closeFREditor();
+    } catch(e) {
+        alert('Save failed: ' + e.message);
+    } finally {
+        btn.textContent = 'Save'; btn.disabled = false;
+    }
+}
+
+function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+loadFRLinks();
+</script>
 {% endblock %}

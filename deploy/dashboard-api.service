@@ -1,0 +1,14 @@
+[Unit]
+Description=Alkira Dashboard API
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/opt/dashboard
+Environment=FEATURE_REQUESTS_FILE=/opt/dashboard/data/feature_requests.json
+ExecStart=/usr/bin/python3 /opt/dashboard/api.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
