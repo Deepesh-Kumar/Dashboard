@@ -1,15 +1,16 @@
 # Dashboard Metrics Project
 
 ## Architecture
-Static HTML dashboard collecting Alkira tenant metrics from Selector AI MCP API → generates static HTML → served via Nginx on `alkira-dashboard.duckdns.org`.
-- **Auth**: Cookie-based session auth (`alkira_session` cookie). Login page validates credentials via nginx basic auth on `/auth-check`, sets cookie on success. Nginx `map` checks cookie on all dashboard pages, redirects to `/login.html` if missing.
-- **Nginx config**: `/etc/nginx/conf.d/dashboard.conf` (single server block with `map` for cookie auth)
+Static HTML dashboard collecting Alkira tenant metrics from Selector AI MCP API → generates static HTML → served via Nginx on `dashboard.alkira.cc` with Okta SSO + local credential fallback.
+- **Auth**: Dual auth — Okta SSO via oauth2-proxy (primary) + local cookie fallback. nginx `auth_request` to `/_auth_check` checks local cookie first, then proxies to oauth2-proxy.
+- **Nginx config**: `/etc/nginx/conf.d/dashboard.conf` (HTTPS + dual auth + `/api/` proxy)
+- **Dashboard API**: Small Python stdlib HTTP server (`api.py`) on port 5000 — serves editable data (feature requests links)
 
 ## Dashboard EC2 Server
 | Property | Value |
 |----------|-------|
 | Instance ID | `i-0beda96326bb4fed8` |
-| Instance Name | `linux-dashboard` |
+| Instance Name | `SE/SA Customer Dashboard - Do not Stop or Delete` |
 | Elastic IP | `54.190.170.4` |
 | Region | `us-west-2` (Oregon) |
 | Instance Type | `t3.micro` |
@@ -17,51 +18,157 @@ Static HTML dashboard collecting Alkira tenant metrics from Selector AI MCP API 
 | SSH Key | `~/Downloads/aws-keys/deepesh-us-west-2.pem` |
 | Remote Dir | `/opt/dashboard` |
 | Web Root | `/var/www/dashboard` |
-| Domain | `alkira-dashboard.duckdns.org` |
-| Basic Auth | `dashboard` / `Alkira2026` |
-| Tags | Name=linux-dashboard, ResourceOwner=deepesh@alkira.net, Forever=True, NotDelete=True |
+| Domain | `dashboard.alkira.cc` |
+| HTTPS | Let's Encrypt cert via Certbot |
+| Basic Auth | `dashboard` / `Alkira2026` (local fallback) |
+| Tags | Name=SE/SA Customer Dashboard - Do not Stop or Delete, DoNotDelete=true, Forever=True, NotDelete=True, ResourceOwner=deepesh@alkira.net |
 | Termination Protection | Enabled |
+| Stop Protection | Enabled |
+| Monthly Cost | ~$10/month (t3.micro + 20GB gp3 + Elastic IP) |
+
+## Okta SSO
+| Property | Value |
+|----------|-------|
+| Domain | `alkira.okta.com` |
+| Client ID | `0oa21hpdz391wUqQL1d8` |
+| Allowed email domain | `@alkira.com` |
+| Redirect URI | `https://dashboard.alkira.cc/oauth2/callback` |
+| OIDC Issuer | `https://alkira.okta.com` (org-level, not `/oauth2/default`) |
+| oauth2-proxy config | `/etc/oauth2-proxy/oauth2-proxy.cfg` |
+| oauth2-proxy service | `systemctl status oauth2-proxy` |
+
+**Okta App Tile**: Add as a Bookmark App in Okta Admin → Applications → Browse App Catalog → "Bookmark App" with URL `https://dashboard.alkira.cc/oauth2/start?rd=/home.html`
+
+## Security Group
+| Port | Allowed IPs |
+|------|-------------|
+| 22 | Corp IPs only (dynamically opened by GitHub Actions during deploy) |
+| 80 | Corp IPs only |
+| 443 | Corp IPs only |
+
+Security Group ID: `sg-064f95d5e864d5d32`
 
 ## Components
-- `src/collector.py` - Fetches data from Selector MCP (Streamable HTTP transport), runs 7 S2QL queries (tenant list, BW RX, BW TX, connector health, BW utilization, connector inventory from bw_pct with segment, data egress bytes)
-- `src/generator.py` - Reads `latest.json`, generates index + per-tenant HTML via Jinja2. Merges sub-tenant health data into parent tenants. Filters sub-tenants from index page.
-- `src/cxp_mapping.py` - CXP→cloud mapping, connector tag→type mapping (con-* and coni-* and bw_pct prefixes), service tag→name mapping, utilization color coding
+- `src/collector.py` - Fetches data from Selector MCP (Streamable HTTP transport), runs 7 S2QL queries
+- `src/generator.py` - Reads `latest.json`, generates index + per-tenant HTML via Jinja2
+- `src/api.py` - Dashboard API server (port 5000) for editable data — feature request links
+- `src/cxp_mapping.py` - CXP→cloud mapping, connector tag→type mapping, service tag→name mapping
 - `src/config.py` - Config (Selector API URL/key, paths)
-- `templates/` - base.html, index.html (sortable tenant table), tenant.html (detail page with charts)
-- `static/` - dashboard.js (search, sorting, Chart.js), style.css
-- `deploy.sh` - Rsync deploy to EC2, sets up Nginx + cron
-- `nginx/dashboard.conf` - Nginx config (port 80, cookie-based auth with `map` directive)
-- `cron/dashboard-metrics` - Weekly cron (Sunday, 2AM UTC)
+- `templates/` - base.html, home.html (portal), index.html (tenant table), tenant.html (detail), login-choice.html, login.html, account-mapping.html
+- `static/` - dashboard.js, style.css
+- `nginx/dashboard.conf` - Nginx HTTPS config with dual auth + API proxy
+- `deploy/oauth2-proxy.cfg` - oauth2-proxy config template
+- `deploy/dashboard-api.service` - systemd service for API server
+- `deploy/setup-okta.sh` - One-time Okta setup script
+- `data/feature_requests.json` - Editable feature request links (edit via UI at home.html)
 
 ## Data Files
-- `data/latest.json` - Fresh from Selector MCP API (316 tenants, 107 parent tenants on index as of 2026-03-04)
-- Selector MCP API (`alkira-prod.selector.ai/mcp`) — working using Streamable HTTP MCP protocol
+- `data/latest.json` - Fresh from Selector MCP API (315 tenants, 107 parent tenants on index)
+- `data/feature_requests.json` - Editable links shown in Feature Requests card on home page
+- Selector MCP API (`alkira-prod.selector.ai/mcp`) — only reachable from corp network/VPN (not from EC2)
 
-## Deployment
+## GitHub Repo
+- **Repo**: `https://github.com/Deepesh-Kumar/Dashboard` (private)
+- **Workflow**: `.github/workflows/refresh.yml` — runs daily at 2AM UTC
+- **IAM User**: `github-actions-dashboard` — minimal permissions (modify SG rules in us-west-2 only)
+
+## GitHub Secrets Required
+| Secret | Purpose |
+|--------|---------|
+| `AWS_ACCESS_KEY_ID` | IAM user key for dynamic SG rule management |
+| `AWS_SECRET_ACCESS_KEY` | IAM user secret |
+| `EC2_SSH_KEY` | Contents of `deepesh-us-west-2.pem` for rsync deploy |
+| `SELECTOR_AI_API_KEY` | Selector MCP API key |
+
+## Deployment (Local → EC2)
 ```bash
-# Deploy code + templates + static assets to EC2:
-rsync -avz -e "ssh -i ~/Downloads/aws-keys/deepesh-us-west-2.pem" \
-  src/ templates/ static/ data/latest.json \
-  ubuntu@54.190.170.4:/opt/dashboard/ --relative
+# 1. Collect fresh data (must run locally — Selector API unreachable from EC2)
+DASHBOARD_LOCAL=1 python3 src/collector.py
 
-# Then regenerate + publish on the server:
-ssh -i ~/Downloads/aws-keys/deepesh-us-west-2.pem ubuntu@54.190.170.4 \
-  "cd /opt/dashboard/src && /opt/dashboard/venv/bin/python3 generator.py && sudo rsync -a --delete /opt/dashboard/output/ /var/www/dashboard/"
-
-# Local dev (uses local data/ and output/ dirs):
+# 2. Generate HTML
 DASHBOARD_LOCAL=1 python3 src/generator.py
+
+# 3. Deploy to EC2
+rsync -az --delete -e "ssh -i ~/Downloads/aws-keys/deepesh-us-west-2.pem -o StrictHostKeyChecking=no" \
+  output/ ubuntu@54.190.170.4:/opt/dashboard/output/
+rsync -az -e "ssh -i ~/Downloads/aws-keys/deepesh-us-west-2.pem -o StrictHostKeyChecking=no" \
+  static/ ubuntu@54.190.170.4:/opt/dashboard/static/
+ssh -i ~/Downloads/aws-keys/deepesh-us-west-2.pem ubuntu@54.190.170.4 \
+  "sudo rsync -a --delete /opt/dashboard/output/ /var/www/dashboard/ && \
+   sudo rsync -a /opt/dashboard/static/ /var/www/dashboard/static/"
 ```
+
+## Home Page Cards
+| Card | Type | Link/Notes |
+|------|------|------------|
+| Tenant Metrics Dashboard | Internal | `/index.html` |
+| Account Mapping | Internal | `/account-mapping.html` |
+| Tenant & Connector Limit / SLAs | External | Google Sheets + Google Doc |
+| CXP Regions | External | Google Sheets |
+| Feature Requests | Editable | Jira dashboards — edit via ✏️ button on UI, saved to `data/feature_requests.json` via API |
+| Salesforce | Coming Soon | — |
+| More Tools | Coming Soon | — |
 
 ---
 
-## Completed Changes
+## Completed Changes (2026-03-05)
+
+### HTTPS + Okta SSO on EC2
+- Obtained Let's Encrypt TLS cert for `dashboard.alkira.cc` (points to `54.190.170.4`)
+- Installed oauth2-proxy v7.6.0 for Okta OIDC — uses org-level issuer `https://alkira.okta.com`
+- Dual auth: Okta primary, local cookie (`alkira_session=alkira_dashboard_auth`) as last resort
+- nginx `auth_request /_auth_check` — checks local cookie first, then proxies to oauth2-proxy:4180
+- Login choice page at `/login-choice.html` — "Sign in with Okta SSO" + "Use local credentials"
+- Fixed: email domain was `alkira.net`, corrected to `alkira.com`
+- Fixed: oauth2-proxy v7.x config uses underscores (not hyphens), `email_domains` (plural list), cookie_secret must be exactly 32 chars
+
+### EC2 Instance Hardening
+- Renamed instance to `SE/SA Customer Dashboard - Do not Stop or Delete`
+- Enabled API Stop Protection (termination protection was already on)
+- Added tags: `DoNotDelete=true`, `Forever=True`, `NotDelete=True`
+- Security group locked to corp IPs only on all ports
+- Added `50.204.236.130` to security group (ports 22, 80, 443)
+
+### GitHub Actions CI/CD
+- Repo pushed to `https://github.com/Deepesh-Kumar/Dashboard`
+- Daily workflow at 2AM UTC: collect → generate → deploy to EC2
+- Deploy uses dynamic SG IP allowlisting (no permanent SSH exposure):
+  1. Get runner public IP
+  2. Add to SG port 22
+  3. rsync deploy
+  4. Remove from SG (`if: always()` ensures cleanup even on failure)
+- IAM user `github-actions-dashboard` created with minimal permissions (SG modify, us-west-2 only)
+- **Known issue**: Selector API unreachable from GitHub Actions runners — collector step hangs. Pending resolution (whitelist EC2/GH runner IPs with Selector team)
+
+### Removed GCS/Firebase
+- Removed `STATIC_BASE`, `FIREBASE_CONFIG`, `OKTA_ENABLED` from config and generator
+- Removed Firebase SDK from templates, firebase-auth.js, login-firebase.html, firebase.json
+- All paths now root-relative (EC2 nginx serves from `/`)
+- Logout always uses `/oauth2/sign_out` (Okta)
+
+### Dashboard API for Editable Data
+- `src/api.py` — Python stdlib HTTP server on `127.0.0.1:5000`
+- Endpoints: `GET /api/feature-requests`, `POST /api/feature-requests`
+- nginx proxies `/api/` → port 5000 (protected by Okta auth)
+- Systemd service: `dashboard-api.service`
+
+### Home Page Updates
+- Renamed "Alkira Tenant Dashboard" → "Main Dashboard" (nav + page title)
+- Renamed "Tenant Dashboard" card → "Tenant Metrics Dashboard"
+- Removed "Dashboard Portal" heading and "Alkira network metrics and insights" subtitle
+- Removed footer line "Alkira Tenant Metrics Dashboard — Data collected monthly from Selector API"
+- Added **Feature Requests** card — editable via ✏️ button, links saved server-side
+- Added **Tenant & Connector Limit / SLAs** card (merged from two separate cards) — links to Google Sheets + Google Doc
+- Added **CXP Regions** card — links to Google Sheets
+- Feature Requests links stored in `data/feature_requests.json` (committed to GitHub, editable via UI)
+
+---
+
+## Completed Changes (Prior Sessions)
 
 ### Collector: Streamable HTTP MCP Protocol (2026-02-16)
-- Rewrote from old SSE protocol (GET `/mcp/`) to Streamable HTTP MCP protocol (POST `/mcp/`)
-- Protocol: POST `initialize` → get `mcp-session-id` header → send `notifications/initialized` → POST `tools/call` with session ID
-- Response parsing: handles both SSE (`event: message\ndata: {json}`) and plain JSON
-- Tool params must be wrapped: `{"params": {"name": "tenant_prefix"}}` not `{"name": "tenant_prefix"}`
-- Safety guard: won't overwrite `latest.json` if 0 populated tenants
+- Rewrote from old SSE protocol to Streamable HTTP MCP protocol (POST `/mcp/`)
+- Protocol: POST `initialize` → get `mcp-session-id` header → send `notifications/initialized` → POST `tools/call`
 
 ### Collector: 7 S2QL Queries
 1. Tenant list (`query_selector_tsdb_label_values` for `tenant_prefix`)
@@ -69,122 +176,45 @@ DASHBOARD_LOCAL=1 python3 src/generator.py
 3. BW TX per CXP (`s2_connector_bw_cxp_tenant_con_tx_avg_rollup`)
 4. Connector health (`s2_connector_health` group-by tag, tenant, cxp_name)
 5. BW utilization (`s2_connector_bw_pct` group-by name, cxp_name, tenant, size, csn_name, type)
-6. Connector inventory (`s2_connector_bw_pct` group-by connectorId, connectorName, tenant_prefix, **tenant**, cxp_name, name, type) — `tenant` field gives segment-level ID
-7. Data egress bytes (`s2_connector_bw_tenant_bytes` — direct TX/RX byte counters per tenant per CXP, 30 days)
-
-### Collector: Preserve Peak Fields on Empty Runs
-- `save_metrics()` loads previous `latest.json` before saving and carries forward non-empty `peak_utilization`, `peak_hit_count`, `cxp_rx_overages` fields when the current run returns 0 records
-- `bw_rx_peak` / `bw_tx_peak` are NOT preserved — peak BW is now derived from time series (always available)
+6. Connector inventory (`s2_connector_bw_pct` group-by connectorId, connectorName, tenant_prefix, tenant, cxp_name, name, type)
+7. Data egress bytes (`s2_connector_bw_tenant_bytes`)
 
 ### Generator: Sub-Tenant Merging
-- `s2_connector_bw_pct` groups by `tenant_prefix` (base tenant), `s2_connector_health` groups by `tenant` (sub-tenant = segment)
-- Generator merges sub-tenant health data, utilization data, and connector data into parent tenants
-- Each merged entry tagged with `_segment` for segment attribution
-- Sub-tenants filtered from index page (316 total → 107 parent tenants shown)
+- Merges sub-tenant health/utilization/connector data into parent tenants
+- Sub-tenants filtered from index page (315 total → 107 parent tenants shown)
 
 ### Connector Counting
-- **Source of truth**: `connector_list` from bw_pct (has unique `connectorId`) preferred over health tags
-- **Dedup**: health tags (`con-*`) repeat tenant-wide counts per CXP — deduplicate by tag
-- **bw_pct name prefixes** (different from health tags): `con-ip_sec`→IPSec, `con-adv_ip_s`→IPSec Advanced, `con-direct_c`→Direct Connect, `con-express_`→Express Route, `con-sd_wan`→Cisco SD-WAN, `con-aruba_ed`→Aruba Edge, `con-vmware_s`→VMware SD-WAN
-- **SaaS**: Not in bw_pct. Merged from health tags (`con-saas*`) when using connector_list path
-- **Internet Inbound** (`con-inb_int`): Mapped as "Internet Inbound", excluded from connector breakdown
-- **Internet** (`con-internet`): Mapped as "Internet", shown in breakdown (but no tenants currently have these)
-
-### Services Count — Instances, Not Types (2026-03-03)
-- Tag format: `svc-{type}-{uuid}:{vm_id}:{tenant_id}:{n}` — UUID before first `:` is the service instance identity
-- Deduplicate by `tag.split(":")[0]` to count unique service instances (not unique type names)
-- Example: MSK with 3 PAN FW instances shows 3, not 1
+- Source of truth: `connector_list` from bw_pct (unique `connectorId`)
+- Tunnel-to-connector ratios: Direct Connect 2:1, Express Route 3:1, IPSec Advanced 4:1, IPSec 2:1, SD-WAN 2:1, Aruba Edge 2:1
 
 ### Cloud / On-Prem Connector Split
-- Index page shows separate **Cloud** and **On-Prem** columns
-- **Cloud types**: AWS VPC, Azure VNet, GCP VPC, OCI VCN, AWS TGW
-- **On-prem types**: Direct Connect, Express Route, IPSec, IPSec Advanced, Cisco/Fortinet/VMware/Versa SD-WAN, Aruba Edge
-- Other types (Internet Inbound, Remote Access, SaaS, GCP Interconnect) excluded from both columns
+- Cloud: AWS VPC, Azure VNet, GCP VPC, OCI VCN, AWS TGW
+- On-prem: Direct Connect, Express Route, IPSec, IPSec Advanced, SD-WAN variants, Aruba Edge
 
-### Tunnel-to-Connector Ratios (coni-* entries)
-| Type | Ratio | Notes |
-|------|-------|-------|
-| Direct Connect | 2:1 | 2 VIFs per connector |
-| Express Route | 3:1 | 3 circuits per connector |
-| IPSec Advanced | 4:1 | 4 tunnels per connector |
-| IPSec | 2:1 | 2 tunnels per connector |
-| SD-WAN (all) | 2:1 | |
-| Aruba Edge | 2:1 | |
+### BW Violators
+- Counts CXPs where peak RX > 150% of allocated CXP BW
+- Peak derived from `bw_rx_timeseries` (30-day hourly max)
 
-### Segment Count
-- Connector breakdown shows **Total Segments: N** above the table
-- Segment count derived from unique `tenant` values in connector_list (bw_pct)
-- Segment names not available in Selector — only numeric IDs (e.g., `koch-0000040-02` → segment 02)
-
-### Data Egress Column
-- Uses direct byte counters from `s2_connector_bw_tenant_bytes` metric (Step 7 in collector)
-- Falls back to BW-derived calculation if direct bytes unavailable
-
-### BW Rollup Fix
-- S2QL `as table ... in last 30 days` returns SUM of 30 daily averages, not actual average
-- Divide by 30: `actual_avg_bps = rollup_value / 30`
-- Helper functions: `rollup_to_avg_bps()`, `rollup_to_bytes()`
-
-### BW Violators — Time-Series Peak vs Allocated (2026-03-04)
-- Counts CXPs where **peak RX > 150% of allocated CXP BW**
-- Peak derived from `bw_rx_timeseries` (30-day hourly max per CXP) — always available, no separate peak query needed
-- Allocated BW uses max-ranked `size` per CXP from utilization data (same as CXP Summary table)
-- `bw_rx_peak` dedicated query is no longer used for violator calculation or CXP summary display
-
-### Tenant Name Cleanup (2026-03-03)
-- Index page strips numeric suffixes from tenant names using regex: `re.sub(r'-*\d+$', '', s).rstrip('-')`
-- Registered as Jinja2 filter `clean_tenant_name`; href still uses full prefix for linking
-- Name override dict for truncated names (applied after regex):
-
-| Key | Display Name | Key | Display Name |
-|-----|-------------|-----|-------------|
-| organ | organon | proba | probably monsters |
-| splun | splunk | adapt | adaptive biotech |
-| abbot | abbott | vallo | vallourec |
-| pensk | penske | veter | veterans united |
-| verit | veritas | steps | stepstone |
-| tekio | tekion | spglo | spglobal |
-| natur | natures sunshine | texas | texas roadhouse |
-| viasa | viasat | pennf | penn foster |
-| cyber | cyberdefense | soren | sorenson |
-| micha | michaels | avail | availity |
-| imper | imperva | mckes | mckesson |
-| footl | footlocker | osttr | osttra |
-| resto | restorepoint | borgw | borgwarner |
-| delta | delta dental | arcte | arctera |
-| mesir | mesirow | speci | speciality mckesson |
-| leonm | leon medical | commv | commvault |
-| labco | labcorp | davit | davita |
-| veloc | velocitytech | | |
-
-### CXP Summary Table — Size Column (2026-03-04)
-- Added **Size** column (e.g. `LARGE (1 Gbps)`) between Cloud and Peak BW RX (30d)
-- Removed separate "CXP Size (Allocated BW)" section from tenant detail page
-- Size uses max-ranked connector size per CXP from utilization data
-
-### Services Section
-- Services from `svc-*` health tags: Palo Alto FW, Fortinet FW, Check Point FW, Cisco FTDv, Zscaler, F5 Load Balancer, Infoblox
-- Shows service name and CXPs on tenant detail page
-
-### UI
-- Login page at `/login.html` — cookie-based auth via nginx `map` directive
-- Logout button clears session cookie
-- Weekly cron: `0 2 * * 0` (Sunday 2AM UTC)
+### Tenant Name Cleanup
+- Strips numeric suffixes, name override dict for truncated names
 
 ---
 
 ## Open Issues
 
+### Collector Cannot Run on EC2 or GitHub Actions
+- Selector MCP API (`alkira-prod.selector.ai`) unreachable from EC2 and GitHub Actions runners
+- Collector must run locally on corp network/VPN
+- **Action needed**: Whitelist EC2 IP `54.190.170.4` with Selector team to enable full automation
+
 ### Segment Names Not Available
-- Selector TSDB has no segment name data — only `{tenant_prefix}-{nn}` numeric IDs
-- Would need per-tenant Alkira portal API access to get segment names
-- Currently showing segment count only (not names)
+- Selector TSDB has no segment name data — only numeric IDs
+- Currently showing segment count only
 
 ### Express Route Connector Count May Vary
-- ER tunnel-to-connector ratio set to 3:1 (confirmed correct for MSK)
-- May not be accurate for all tenants (ratio varies by configuration)
+- ER tunnel-to-connector ratio set to 3:1 (confirmed for MSK, may vary)
 
-### Collector Cannot Run on EC2
-- Selector MCP API (`alkira-prod.selector.ai`) unreachable from EC2 — connection timeout
-- Collector runs locally; data + generated HTML deployed via rsync
-- Need to investigate EC2 outbound firewall/security group rules
+### Reserved Instance Savings
+- Current cost ~$10/month On-Demand
+- 1-year Reserved Instance would reduce to ~$5.29/month — saving ~$38/year
+- No downtime required — just a billing change in AWS console
